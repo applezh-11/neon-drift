@@ -130,6 +130,8 @@ var passwordError = document.getElementById('password-error');
 function checkPassword() {
   if (passwordInput.value === GAME_PASSWORD) {
     passwordScreen.classList.add('hidden');
+    initAudio();
+    if (ac && ac.state === 'suspended') ac.resume();
   } else {
     passwordInput.classList.add('error');
     passwordError.classList.add('show');
@@ -360,7 +362,7 @@ window.addEventListener('mouseup',function(){shooting=false;});
 
 // === Touch Controls for Mobile ===
 var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-var bombBtn = null;
+var bombBtn = null, fireBtn = null, joyStick = null, joyKnob = null;
 
 if (isMobile) {
   document.body.style.cursor = 'auto';
@@ -373,56 +375,81 @@ if (isMobile) {
   muteBtn.style.fontSize = '13px';
   muteBtn.style.right = '78px';
 
-  // Create bomb button
+  // Virtual joystick
+  joyStick = document.createElement('div');
+  joyStick.style.cssText = 'position:fixed;bottom:80px;left:30px;width:120px;height:120px;border-radius:50%;border:2px solid rgba(0,255,255,.3);background:rgba(0,20,40,.4);z-index:15;display:none;';
+  document.body.appendChild(joyStick);
+  joyKnob = document.createElement('div');
+  joyKnob.style.cssText = 'position:absolute;top:50%;left:50%;width:50px;height:50px;border-radius:50%;background:rgba(0,255,255,.4);border:2px solid rgba(0,255,255,.6);transform:translate(-50%,-50%);box-shadow:0 0 10px rgba(0,255,255,.3);';
+  joyStick.appendChild(joyKnob);
+
+  // Fire button (right side)
+  fireBtn = document.createElement('button');
+  fireBtn.textContent = 'FIRE';
+  fireBtn.style.cssText = 'position:fixed;bottom:90px;right:30px;z-index:15;width:90px;height:90px;border-radius:50%;border:3px solid #0ff;background:rgba(0,255,255,.15);color:#0ff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 0 15px rgba(0,255,255,.2);';
+  document.body.appendChild(fireBtn);
+
+  // Bomb button
   bombBtn = document.createElement('button');
   bombBtn.textContent = 'BOMB';
-  bombBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:15;width:70px;height:70px;border-radius:50%;border:2px solid #f80;background:rgba(255,136,0,.2);color:#f80;font-size:14px;font-weight:700;cursor:pointer;';
+  bombBtn.style.cssText = 'position:fixed;bottom:20px;right:100px;z-index:15;width:60px;height:60px;border-radius:50%;border:2px solid #f80;background:rgba(255,136,0,.15);color:#f80;font-size:12px;font-weight:700;cursor:pointer;';
   document.body.appendChild(bombBtn);
 
   bombBtn.addEventListener('touchstart', function(e) {
     e.preventDefault();
-    if (G.on && !G.pause && pl.bomb > 0) {
-      pl.bomb--;
-      useBomb();
-    }
+    if (G.on && !G.pause && pl.bomb > 0) { pl.bomb--; useBomb(); }
   });
 
-  // Touch move - drag to move player
-  var touchActive = false;
-  C.addEventListener('touchstart', function(e) {
+  // Fire button
+  fireBtn.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (G.on && !G.pause) { shooting = true; shoot(); }
+  });
+  fireBtn.addEventListener('touchend', function(e) { e.preventDefault(); shooting = false; });
+  fireBtn.addEventListener('touchcancel', function() { shooting = false; });
+
+  // Virtual joystick
+  var joyActive = false, joyCX = 0, joyCY = 0;
+  joyStick.addEventListener('touchstart', function(e) {
     e.preventDefault();
     if (!G.on || G.pause) return;
-    touchActive = true;
-    shooting = true;
-    var t = e.touches[0];
-    mx = t.clientX;
-    my = t.clientY;
-    shoot();
+    joyActive = true;
+    var r = joyStick.getBoundingClientRect();
+    joyCX = r.left + r.width / 2; joyCY = r.top + r.height / 2;
   }, { passive: false });
 
-  C.addEventListener('touchmove', function(e) {
+  joyStick.addEventListener('touchmove', function(e) {
     e.preventDefault();
-    if (!touchActive) return;
-    var t = e.touches[0];
-    mx = t.clientX;
-    my = t.clientY;
+    if (!joyActive) return;
+    var t = e.touches[0], dx = t.clientX - joyCX, dy = t.clientY - joyCY;
+    var dist = Math.hypot(dx, dy);
+    if (dist > 50) { dx = dx / dist * 50; dy = dy / dist * 50; }
+    joyKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+    mx = Math.max(0, Math.min(W, pl.x + dx * 4));
+    my = Math.max(0, Math.min(H, pl.y + dy * 4));
   }, { passive: false });
 
-  C.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    touchActive = false;
-    shooting = false;
+  joyStick.addEventListener('touchend', function(e) {
+    e.preventDefault(); joyActive = false;
+    joyKnob.style.transform = 'translate(-50%, -50%)';
   }, { passive: false });
-
-  C.addEventListener('touchcancel', function(e) {
-    touchActive = false;
-    shooting = false;
+  joyStick.addEventListener('touchcancel', function() {
+    joyActive = false; joyKnob.style.transform = 'translate(-50%, -50%)';
   });
+
+  // Show joystick when game starts
+  var _origStart = startGame;
+  startGame = function() {
+    _origStart();
+    joyStick.style.display = 'block';
+    if(fireBtn) fireBtn.style.display = 'block';
+    if(bombBtn) bombBtn.style.display = 'block';
+  };
 
   // Update tips for mobile
   var tipsEl = document.querySelector('#overlay .tips');
   if (tipsEl) {
-    tipsEl.innerHTML = 'Touch & Drag = Move<br>Auto-shoot while touching<br>Collect yellow stars for score<br>Destroy enemies and fight the BOSS<br>Green ring = Shield';
+    tipsEl.innerHTML = 'Left Joystick = Move<br>Right FIRE Button = Shoot<br>Collect yellow stars for score<br>Destroy enemies and fight the BOSS<br>Green ring = Shield | BOMB = Clear all';
   }
 
   // Make UI elements bigger for touch
@@ -777,6 +804,7 @@ function startGame(){
 
 function gameOver(){
   G.on=false;stopBGM();
+  if(isMobile){joyStick.style.display='none';if(fireBtn)fireBtn.style.display='none';if(bombBtn)bombBtn.style.display='none';}
   ann('GAME OVER','Score: '+G.score,3000);
   setTimeout(function(){
     resultEl.textContent='Score: '+G.score+' | Wave: '+G.wave+' | Best Combo: x'+G.maxCombo;
@@ -793,7 +821,7 @@ var ac=null,bgain=null,bgPlay=false,bgMute=false,bgInt=null;
 
 function initAudio(){
   if(ac)return;
-  try{ac=new(window.AudioContext||window.webkitAudioContext)();bgain=ac.createGain();bgain.gain.value=.18;bgain.connect(ac.destination);}
+  try{ac=new(window.AudioContext||window.webkitAudioContext)();bgain=ac.createGain();bgain.gain.value=.5;bgain.connect(ac.destination);}
   catch(e){ac=null;}
 }
 
@@ -811,12 +839,14 @@ function tone(freq,dur,type,vol){
 var beat=0;
 var bassN=[110,0,0,0,87.31,0,0,0,65.41,0,0,0,98,0,0,0];
 var arpN=[440,523,659,880,349,440,523,698,262,330,392,523,392,494,587,784];
+var melN=[0,659,0,784,0,880,0,784,0,659,0,523,0,587,0,659];
 
 function bgTick(){
   if(!ac||bgMute||!bgPlay)return;
   var b=beat%16;
-  if(bassN[b])tone(bassN[b],.4,'sawtooth',.06);
-  if(b%2===0)tone(arpN[b],.1,'square',.015);
+  if(bassN[b])tone(bassN[b],.4,'sawtooth',.12);
+  if(b%2===0)tone(arpN[b],.1,'square',.04);
+  if(melN[b])tone(melN[b],.2,'triangle',.06);
   if(b%4===0){
     try{
       var buf=ac.createBuffer(1,Math.floor(ac.sampleRate*.1),ac.sampleRate);
@@ -850,12 +880,12 @@ function pauseBGM(){if(bgInt){clearInterval(bgInt);bgInt=null;}}
 function resumeBGM(){if(bgPlay&&!bgMute&&!bgInt)bgInt=setInterval(bgTick,Math.round(60000/128));}
 function togMute(){bgMute=!bgMute;muteBtn.textContent=bgMute?'OFF':'SND';if(bgMute)pauseBGM();else if(bgPlay)resumeBGM();}
 
-function sfxS(){tone(800,.04,'square',.03);}
-function sfxH(){tone(200,.06,'sawtooth',.04);}
-function sfxC(){tone(880,.06,'sine',.05);}
-function sfxD(){tone(80,.2,'sawtooth',.08);}
-function sfxB(){tone(60,.3,'sawtooth',.07);}
-function sfxW(){tone(523,.15,'triangle',.05);}
+function sfxS(){tone(800,.04,'square',.06);}
+function sfxH(){tone(200,.06,'sawtooth',.08);}
+function sfxC(){tone(880,.06,'sine',.1);}
+function sfxD(){tone(80,.2,'sawtooth',.15);}
+function sfxB(){tone(60,.3,'sawtooth',.14);}
+function sfxW(){tone(523,.15,'triangle',.1);}
 
 loop();
 </script>
