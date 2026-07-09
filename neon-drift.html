@@ -6,8 +6,9 @@
 <title>霓虹漂移 - Neon Drift</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{overflow:hidden;background:#000;font-family:'Segoe UI',sans-serif;cursor:none}
-canvas{display:block}
+body{overflow:hidden;background:#000;font-family:'Segoe UI',sans-serif;cursor:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,button{touch-action:auto;-webkit-user-select:text;user-select:text}
+canvas{display:block;touch-action:none}
 #hud{position:fixed;top:0;left:0;width:100%;pointer-events:none;z-index:10}
 #hud-top{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px}
 #hud-left{display:flex;flex-direction:column;gap:4px}
@@ -356,6 +357,81 @@ function showUpgrade(){
 var shooting=false,scd=0;
 window.addEventListener('mousedown',function(e){if(G.on&&!G.pause){shooting=true;shoot();}});
 window.addEventListener('mouseup',function(){shooting=false;});
+
+// === Touch Controls for Mobile ===
+var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+var bombBtn = null;
+
+if (isMobile) {
+  document.body.style.cursor = 'auto';
+  cur.style.display = 'none';
+  pauseBtn.style.width = '50px';
+  pauseBtn.style.height = '50px';
+  pauseBtn.style.fontSize = '18px';
+  muteBtn.style.width = '50px';
+  muteBtn.style.height = '50px';
+  muteBtn.style.fontSize = '13px';
+  muteBtn.style.right = '78px';
+
+  // Create bomb button
+  bombBtn = document.createElement('button');
+  bombBtn.textContent = 'BOMB';
+  bombBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:15;width:70px;height:70px;border-radius:50%;border:2px solid #f80;background:rgba(255,136,0,.2);color:#f80;font-size:14px;font-weight:700;cursor:pointer;';
+  document.body.appendChild(bombBtn);
+
+  bombBtn.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (G.on && !G.pause && pl.bomb > 0) {
+      pl.bomb--;
+      useBomb();
+    }
+  });
+
+  // Touch move - drag to move player
+  var touchActive = false;
+  C.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (!G.on || G.pause) return;
+    touchActive = true;
+    shooting = true;
+    var t = e.touches[0];
+    mx = t.clientX;
+    my = t.clientY;
+    shoot();
+  }, { passive: false });
+
+  C.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    if (!touchActive) return;
+    var t = e.touches[0];
+    mx = t.clientX;
+    my = t.clientY;
+  }, { passive: false });
+
+  C.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    touchActive = false;
+    shooting = false;
+  }, { passive: false });
+
+  C.addEventListener('touchcancel', function(e) {
+    touchActive = false;
+    shooting = false;
+  });
+
+  // Update tips for mobile
+  var tipsEl = document.querySelector('#overlay .tips');
+  if (tipsEl) {
+    tipsEl.innerHTML = 'Touch & Drag = Move<br>Auto-shoot while touching<br>Collect yellow stars for score<br>Destroy enemies and fight the BOSS<br>Green ring = Shield';
+  }
+
+  // Make UI elements bigger for touch
+  var overlayBtn = document.getElementById('btn');
+  if (overlayBtn) { overlayBtn.style.padding = '18px 55px'; overlayBtn.style.fontSize = '22px'; }
+  var style = document.createElement('style');
+  style.textContent = '.upgrade-card{width:140px;padding:20px 10px}';
+  document.head.appendChild(style);
+}
 window.addEventListener('keydown',function(e){
   if(e.code==='Escape'&&G.on){togPause();return;}
   if(e.code==='KeyM'){togMute();return;}
